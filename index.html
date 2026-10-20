@@ -49,6 +49,12 @@ canvas:focus-visible { border-color: var(--accent); }
 #pad { display: none; }
 body.touch { padding: 0; gap: 0; height: 100dvh; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 body.touch .legend { display: none; }
+/* full screen on a computer: the game fills the screen, nothing else shows */
+body.fs { padding: 0; gap: 0; height: 100vh; justify-content: center; background: #000; overflow: hidden; }
+body.fs .legend { display: none; }
+body.fs canvas { border: 0; border-radius: 0; }
+.fsbtn { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 2px 10px; cursor: pointer; }
+.fsbtn:hover { border-color: var(--accent); }
 body.touch canvas { border: 0; border-radius: 0; touch-action: none; }
 body.touch #pad { display: flex; touch-action: none; }
 .stick { position: relative; width: 150px; height: 150px; border-radius: 50%; background: rgba(36, 33, 28, 0.45);
@@ -129,9 +135,10 @@ kbd {
   <span><b>Special</b> <kbd>K</kbd> / right click</span>
   <span><b>Chao Keng (dash)</b> <kbd>Space</kbd></span>
   <span><b>Interact</b> <kbd>E</kbd> / <kbd>Enter</kbd></span>
-  <span><b>Reroll boons</b> <kbd>R</kbd></span>
+  <span><b>Reroll power-ups</b> <kbd>R</kbd></span>
   <span><b>Pause</b> <kbd>P</kbd> / <kbd>Esc</kbd> / ‖ button</span>
   <span><b>Sound</b> <kbd>M</kbd></span>
+  <span><button class="fsbtn" id="fsDesk" type="button">Full screen</button> <kbd>F</kbd></span>
 </div>
 
 <script>
@@ -849,13 +856,26 @@ function fit() {
     }
     cv.style.width = Math.floor(W * s) + 'px'; cv.style.height = Math.floor(H * s) + 'px'; return;
   }
-  const avW = Math.min(document.body.clientWidth - 4, 1280);
-  const avH = Math.max(200, innerHeight - 110);
+  const fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  document.body.classList.toggle('fs', fs);
+  const avW = fs ? innerWidth : Math.min(document.body.clientWidth - 4, 1280);
+  const avH = fs ? innerHeight : Math.max(200, innerHeight - 110);
   let s = Math.min(avW / W, avH / H);
-  if (s >= 1) s = Math.max(1, Math.floor(s));
+  if (s >= 1 && !fs) s = Math.max(1, Math.floor(s));   // windowed: whole-pixel scaling; full screen: fill the screen
   cv.style.width = Math.round(W * s) + 'px'; cv.style.height = Math.round(H * s) + 'px';
 }
 addEventListener('resize', fit); fit();
+document.addEventListener('fullscreenchange', () => { fit(); cv.focus(); });
+document.addEventListener('webkitfullscreenchange', fit);
+function toggleFullscreen() {
+  try {
+    const d = document.documentElement;
+    if (!(document.fullscreenElement || document.webkitFullscreenElement)) { const r = (d.requestFullscreen || d.webkitRequestFullscreen).call(d); if (r && r.catch) r.catch(() => {}); }
+    else (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } catch (_) {}
+}
+document.getElementById('fsDesk').addEventListener('click', () => { toggleFullscreen(); });
+addEventListener('keydown', e => { if (e.key && e.key.toLowerCase() === 'f' && !e.repeat) toggleFullscreen(); });
 
 /* ---------------- drawing helpers ---------------- */
 const isPixelText = s => [...String(s)].every(ch => ch.charCodeAt(0) < 128);   // anything non-English (快点, சீக்கிரம்) uses the system font
@@ -1269,7 +1289,7 @@ function updateIntro(dt) {
     G.scene = 'hub';
     if (I.mode === 'first') {
       say('brute', 'CHANNEL 8 NEWS', 'BREAKING: PSI LEVELS ACROSS SINGAPORE HAVE HIT CRITICAL. SCIENTISTS CONFIRM THE HAZE HAS... GAINED SENTIENCE. AUTHORITIES ARE CALLING THEM THE HAZED. STAY INDOORS. IF YOU MUST GO OUT, WEAR A MASK.',
-        () => say('hero_nm', 'JUN JIE', 'MONSTERS MADE OF HAZE? I NEED TO GET HOME TO MY FAMILY. I BETTER FIND SOMETHING TO FIGHT WITH.'));
+        () => say('hero_nm', 'JUN JIE', 'MONSTERS MADE OF HAZE? I NEED TO GET BACK TO MY FAMILY! I BETTER FIND SOMETHING TO FIGHT WITH.'));
       save.firstMask = true; persist();
     } else if (I.mode === 'wake') {
       say('nurse', 'NURSE MEI', nurseLine(), physioPing);
