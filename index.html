@@ -2684,20 +2684,21 @@ const bossHittable = B => B && !BOSS_IDLE.includes(B.state);
 function damageBoss(n, quiet) {
   const B = G.boss;
   if (G.inSiam) RS.siamDmg = true; else RS.otherDmg = true;
-  if (B && B.state === 'stone' && !quiet && (G.immuneT || 0) <= 0) {
+  // while any flag stands, nothing gets through to him
+  const shielded = B && B.flagPhase && G.flags.length > 0;
+  if (B && (B.state === 'stone' || shielded) && !quiet && (G.immuneT || 0) <= 0) {
     G.immuneT = 0.6; sfx('immune');
     G.fx.push({ k: 'pop', x: B.x, y: B.y - 54, t: 0.7, s: 'IMMUNE', c: '#9aa0a9' });
-    if (B.flagPhase && (!G.banner || G.banner.t < 0.5)) G.banner = { t: 2, s: 'HE IS STONE! BREAK THE FLAGS!' };
+    if (B.flagPhase && (!G.banner || G.banner.t < 0.5)) G.banner = { t: 2, s: 'BREAK HIS FLAGS FIRST!' };
   }
-  if (!bossHittable(B)) return;
+  if (!bossHittable(B) || shielded || B.state === 'stone') return;
   if (B.state === 'stunned') n *= 2;
   B.hp -= n; B.flash = 0.08; if (!quiet) { sfx(G.weapon === 'fan' ? 'slash' : 'hit'); G.fx.push({ k: 'pop', x: B.x, y: B.y - 52, t: 0.5, s: Math.round(n), c: '#ffffff' }); }
-  if (B.phase === 1 && B.hp <= B.max * 0.66) {
+  if (B.phase === 1 && !B.flagPhase && B.hp <= B.max * 0.66) {
+    // phase 2 opens: he turns to stone and plants three flags, each sends out a wisp half a second later
     B.hp = B.max * 0.66; B.flagPhase = true; B.state = 'stone'; B.t = 0; B.ringT = 0.5; G.banner = { t: 4, s: 'RAFFLES TURNS TO STONE! BREAK HIS FLAGS!' }; sfx('stone');
-    while (G.flags.length < 3) plantFlag();
-    B.flagTotal = 3; B.flagCap = flagCap(); B.flagT = 0; B.flagBroken = 0;
-  } else if (B.flagPhase) {
-    B.hp = Math.max(B.hp, B.max * 0.4);          // can chip him while he walks, but the flags must fall first
+    G.flags = []; for (let i = 0; i < 3; i++) plantFlag(0.5);
+    B.respawns = 0; B.respawnQ = []; B.flagBroken = 0;
   } else if (B.phase === 2 && B.hp <= B.max * 0.33) {
     B.hp = B.max * 0.33; B.phase = 3; B.state = 'roar'; B.t = 1.5; G.shake = 0.8; sfx('roar');
     G.banner = { t: 2.2, s: 'RAFFLES IS ENRAGED!' };
@@ -2705,13 +2706,15 @@ function damageBoss(n, quiet) {
   }
   if (B.hp <= 0) { B.hp = 0; B.state = 'dead'; B.t = 2.2; sfx('boss_dead'); G.flags = []; G.waves = []; for (const e of G.enemies) e.state = 'puff', e.t = 99; }
 }
-// phase 2: broken flags grow back one at a time until this many have stood in total (by PSI level), then they stop
-const flagCap = () => 6 - (cheat('baby') ? 2 : 0);   // six flags in total to break, at every PSI
-const flagsLeft = B => G.flags.length + Math.max(0, (B.flagCap || 3) - (B.flagTotal || 3));
-function plantFlag() {
+// phase 2 flags: 3 to start. Each one broken makes him plant a replacement after a delay, but only this many times in total,
+// so you break between 3 (if you're quick) and 3 + this many. Clear the field and he's stunned.
+const FLAG_RESPAWNS = () => cheat('baby') ? 2 : [3, 6, 9][G.psi];   // so at most 6 / 9 / 12 flags to break
+const FLAG_DELAY = () => cheat('baby') ? 5 : [3, 2.5, 2][G.psi];
+const STUN_TIME = () => [3, 2.5, 2][G.psi];
+function plantFlag(firstCd) {
   let x, y, tries = 0;
   do { x = rand(70, 250); y = rand(80, 160); tries++; } while ((Math.hypot(x - P.x, y - P.y) < 50 || Math.hypot(x - 160, y - 108) < 30) && tries < 30);
-  G.flags.push({ x, y, hp: 15 * PSI[G.psi].hp, max: 15 * PSI[G.psi].hp, cd: 4.5 + rand(0, 2), flash: 0 });
+  G.flags.push({ x, y, hp: 15 * PSI[G.psi].hp, max: 15 * PSI[G.psi].hp, cd: firstCd != null ? firstCd : 4.5 + rand(0, 2), flash: 0 });
   G.fx.push({ k: 'ring', x, y: y - 8, t: 0.5 });
 }
 function damageFlag(f, n) {
@@ -2722,8 +2725,11 @@ function damageFlag(f, n) {
     f.dead = true; for (let i = 0; i < 8; i++) G.fx.push({ k: 'smoke', x: f.x, y: f.y - 10, t: 0.6, vx: rand(-30, 30), vy: rand(-30, 0), r: 3 });
     G.flags = G.flags.filter(x => !x.dead);
     const B = G.boss;
-    if (B && B.flagPhase) B.flagBroken = (B.flagBroken || 0) + 1;
-    if (B && B.flagPhase && G.flags.length === 0 && B.flagTotal >= B.flagCap) { B.flagPhase = false; B.alt = 0; B.state = 'stunned'; B.phase = 2; B.t = 3.5; G.banner = { t: 2, s: 'STUNNED! HIT HIM NOW!' }; sfx('boon'); }
+    if (B && B.flagPhase) {
+      B.flagBroken = (B.flagBroken || 0) + 1;
+      if (G.flags.length === 0) { B.flagPhase = false; B.respawnQ = []; B.alt = 0; B.state = 'stunned'; B.phase = 2; B.t = STUN_TIME(); G.banner = { t: 2, s: 'STUNNED! HIT HIM NOW!' }; sfx('boon'); }
+      else if (B.respawns + B.respawnQ.length < FLAG_RESPAWNS()) B.respawnQ.push(FLAG_DELAY());   // he'll put one back unless you clear the rest first
+    }
   }
 }
 function bossMove(B, tx, ty, sp, dt) {
@@ -2802,11 +2808,11 @@ function updateBoss(dt) {
     if (B.t <= 0) win();
     return;
   }
-  // broken flags grow back, one every 3 seconds, until the cap is used up
-  if (B.flagPhase && G.flags.length < 3 && B.flagTotal < B.flagCap) {
-    B.flagT += dt;
-    if (B.flagT >= (G.flags.length === 0 ? 1.5 : cheat('baby') ? 6 : 5)) { B.flagT = 0; B.flagTotal++; plantFlag(); sfx('stone'); G.fx.push({ k: 'pop', x: G.flags[G.flags.length - 1].x, y: G.flags[G.flags.length - 1].y - 34, t: 0.8, s: 'FLAG RETURNS!', c: '#d6d1c8' }); }
-  } else if (B.flagPhase) B.flagT = 0;
+  // replacement flags: each broken flag's timer runs down, then he plants a new one (only while others still stand)
+  if (B.flagPhase && B.respawnQ && B.respawnQ.length) {
+    for (let i = 0; i < B.respawnQ.length; i++) B.respawnQ[i] -= dt;
+    while (B.respawnQ.length && B.respawnQ[0] <= 0) { B.respawnQ.shift(); B.respawns++; plantFlag(); sfx('stone'); const f = G.flags[G.flags.length - 1]; G.fx.push({ k: 'pop', x: f.x, y: f.y - 34, t: 0.8, s: 'FLAG RETURNS!', c: '#d6d1c8' }); }
+  }
   // flags keep spawning wisps
   for (const f of G.flags) {
     f.cd -= dt; f.flash -= dt;
@@ -2845,10 +2851,10 @@ function updateBoss(dt) {
     if (B.cd <= 0) {
       B.n++;
       const r = Math.random();
-      if (ph === 3 && B.n % 2 === 0) { B.state = 'crouch'; B.t = 0.45; B.jumps = G.psi === 2 ? 2 : 1; }
+      if (ph === 2) { B.state = 'aim'; B.t = 0.45; B.dir = { x: dx / d, y: dy / d }; }   // phase 2 is all charges, each ending in a burst of scrolls
+      else if (ph === 3 && B.n % 2 === 0) { B.state = 'crouch'; B.t = 0.45; B.jumps = G.psi === 2 ? 2 : 1; }
       else if (d < 40) { B.state = 'cane'; B.t = 0.6; }
       else if (ph >= 2 && r < 0.4) { B.state = 'aim'; B.t = ph === 3 ? 0.45 : 0.6; B.dir = { x: dx / d, y: dy / d }; }
-      else if (ph === 1 && r < 0.3 && G.flags.length < 2) { B.state = 'flag'; B.t = 0.5; }
       else if (G.psi >= 1 && B.n % 3 === 0) { B.state = 'ring'; B.t = 0.6; }
       else { B.state = 'scroll'; B.t = 0.45; }
     }
@@ -2861,11 +2867,14 @@ function updateBoss(dt) {
     return;
   }
   if (B.state === 'charge') {
-    const sp = (ph === 3 ? 280 : 230) * (cheat('baby') ? 0.6 : 1);
+    const sp = (ph === 3 ? 320 : ph === 2 ? 280 : 230) * (cheat('baby') ? 0.6 : 1);
     const moved = bossMove(B, B.x + B.dir.x * 50, B.y + B.dir.y * 50, sp, dt);
     if (Math.random() < 0.8) G.fx.push({ k: 'dust', x: B.x + rand(-8, 8), y: B.y - 2, t: 0.4, vx: -B.dir.x * 30, vy: rand(-10, 0), r: 3 });
     if (!B.hitP && Math.hypot(P.x - B.x, P.y - B.y) < 16) { B.hitP = true; hurtPlayer(L.raff); }
-    if (B.t <= 0 || !moved) { B.state = 'walk'; B.cd = ph === 3 ? rand(0.5, 0.8) : rand(0.8, 1.1); if (!moved) { G.shake = 0.2; G.fx.push({ k: 'slam', x: B.x, y: B.y - 4, t: 0.25 }); } }
+    if (B.t <= 0 || !moved) {
+      B.state = 'walk'; B.cd = ph === 3 ? rand(0.5, 0.8) : ph === 2 ? rand(0.7, 1.0) : rand(0.8, 1.1); if (!moved) { G.shake = 0.2; G.fx.push({ k: 'slam', x: B.x, y: B.y - 4, t: 0.25 }); }
+      if (ph === 2) { scrollRing(B, [6, 8, 10][G.psi], 70, B.n * 0.5); sfx('boss_shot'); }   // skids to a stop and the scrolls fly out
+    }
     return;
   }
   if (B.state === 'crouch') {
@@ -3549,7 +3558,7 @@ function drawRun() {
   if (G.shop) drawShopUI();
   if (!G.cut) { drawHUD(); drawPauseBtn(); tutDraw(); }
   if (G.boss && G.boss.flagPhase && !G.boon) {
-    const lab = 'BREAK THE FLAGS  ' + Math.min(G.boss.flagBroken || 0, G.boss.flagCap || 6) + ' / ' + (G.boss.flagCap || 6), w = textW(lab) + 18;
+    const lab = 'BREAK THE FLAGS  ' + G.flags.length + ' LEFT', w = textW(lab) + 18;
     const pulse = ((G.t * 2) | 0) % 2;
     panel(160 - w / 2, 18, 160 + w / 2, 30, pulse ? '#f2c14e' : '#e8a25c');
     ctx.fillStyle = '#3a3936'; ctx.fillRect(160 - w / 2 + 5, 20, 1, 8); ctx.fillStyle = '#5d6270'; ctx.fillRect(160 - w / 2 + 6, 20, 5, 4);
@@ -3735,7 +3744,7 @@ function drawHUD() {
   { const rdy = P.dashCd <= 0; text('SIAM', W - 64, H - 12, rdy ? '#efe6d6' : '#6d6862'); ctx.fillStyle = '#2a2420'; ctx.fillRect(W - 64, H - 5, 35, 2); ctx.fillStyle = rdy ? '#9cc24a' : '#e8a25c'; ctx.fillRect(W - 64, H - 5, 35 * (1 - clamp(P.dashCd / dashCdBase(), 0, 1)), 2); }
   if (G.boss && !['statue', 'cut'].includes(G.boss.state)) {
     const B = G.boss;
-    textC('SIR STAMFORD RAFFLES' + (B.phase === 3 ? ' - ENRAGED' : B.flagPhase ? ' - FLAGS LEFT: ' + flagsLeft(B) : ''), 160, H - 14, B.phase === 3 ? '#ff4a2e' : B.state === 'stone' ? '#d6d1c8' : '#efe6d6');
+    textC('SIR STAMFORD RAFFLES' + (B.phase === 3 ? ' - ENRAGED' : B.flagPhase ? ' - IMMUNE' : ''), 160, H - 14, B.phase === 3 ? '#ff4a2e' : B.state === 'stone' ? '#d6d1c8' : '#efe6d6');
     ctx.fillStyle = '#1b1c20'; ctx.fillRect(70, H - 7, 180, 4);
     ctx.fillStyle = B.state === 'stone' ? '#9aa0a9' : B.state === 'stunned' ? '#ffd45a' : B.phase === 3 && ((G.t * 4) | 0) % 2 ? '#ff4a2e' : '#d8322a';
     ctx.fillRect(71, H - 6, 178 * clamp(B.hp / B.max, 0, 1), 2);
