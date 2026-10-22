@@ -2710,7 +2710,7 @@ function damageBoss(n, quiet) {
 // so you break between 3 (if you're quick) and 3 + this many. Clear the field and he's stunned.
 const FLAG_RESPAWNS = () => cheat('baby') ? 2 : [3, 6, 9][G.psi];   // so at most 6 / 9 / 12 flags to break
 const FLAG_DELAY = () => cheat('baby') ? 5 : [3, 2.5, 2][G.psi];
-const STUN_TIME = () => [3, 2.5, 2][G.psi];
+const STUN_TIME = () => cheat('baby') ? 3.5 : [3, 2.5, 2][G.psi];
 function plantFlag(firstCd) {
   let x, y, tries = 0;
   do { x = rand(70, 250); y = rand(80, 160); tries++; } while ((Math.hypot(x - P.x, y - P.y) < 50 || Math.hypot(x - 160, y - 108) < 30) && tries < 30);
@@ -2781,6 +2781,8 @@ function updateCut(dt) {
     G.cut = null; save.seenRaffles = true; persist(); B.state = 'leapin'; B.t = 0.55; B.x = 160; B.y = 132; B.alt = 30;
   }
 }
+// the jump's shadow chases Jun Jie at a set speed: a Siam or a sprint still gets you out, standing still doesn't
+function bossTrack(B, dt, sp) { const tgt = safeLanding(P.x, P.y), ddx = tgt.x - B.x, ddy = tgt.y - B.y, dd = Math.hypot(ddx, ddy) || 1, st = Math.min(dd, (sp || (G.psi === 2 ? 135 : 120)) * dt); B.x += ddx / dd * st; B.y += ddy / dd * st; }
 function updateBoss(dt) {
   const B = G.boss, L = PSI[G.psi];
   B.flash -= dt; B.alt = B.alt || 0; if (G.immuneT > 0) G.immuneT -= dt;
@@ -2851,7 +2853,7 @@ function updateBoss(dt) {
     if (B.cd <= 0) {
       B.n++;
       const r = Math.random();
-      if (ph === 2) { B.state = 'aim'; B.t = 0.45; B.dir = { x: dx / d, y: dy / d }; }   // phase 2 is all charges, each ending in a burst of scrolls
+      if (ph === 2 && !cheat('baby')) { B.state = 'aim'; B.t = 0.45; B.dir = { x: dx / d, y: dy / d }; }   // phase 2 is all charges, each ending in a burst of scrolls (Baby Mode keeps the old mix)
       else if (ph === 3 && B.n % 2 === 0) { B.state = 'crouch'; B.t = 0.45; B.jumps = G.psi === 2 ? 2 : 1; }
       else if (d < 40) { B.state = 'cane'; B.t = 0.6; }
       else if (ph >= 2 && r < 0.4) { B.state = 'aim'; B.t = ph === 3 ? 0.45 : 0.6; B.dir = { x: dx / d, y: dy / d }; }
@@ -2867,13 +2869,13 @@ function updateBoss(dt) {
     return;
   }
   if (B.state === 'charge') {
-    const sp = (ph === 3 ? 320 : ph === 2 ? 280 : 230) * (cheat('baby') ? 0.6 : 1);
+    const sp = cheat('baby') ? (ph === 3 ? 280 : 230) * 0.6 : (ph === 3 ? 320 : ph === 2 ? 280 : 230);
     const moved = bossMove(B, B.x + B.dir.x * 50, B.y + B.dir.y * 50, sp, dt);
     if (Math.random() < 0.8) G.fx.push({ k: 'dust', x: B.x + rand(-8, 8), y: B.y - 2, t: 0.4, vx: -B.dir.x * 30, vy: rand(-10, 0), r: 3 });
     if (!B.hitP && Math.hypot(P.x - B.x, P.y - B.y) < 16) { B.hitP = true; hurtPlayer(L.raff); }
     if (B.t <= 0 || !moved) {
-      B.state = 'walk'; B.cd = ph === 3 ? rand(0.5, 0.8) : ph === 2 ? rand(0.7, 1.0) : rand(0.8, 1.1); if (!moved) { G.shake = 0.2; G.fx.push({ k: 'slam', x: B.x, y: B.y - 4, t: 0.25 }); }
-      if (ph === 2) { scrollRing(B, [6, 8, 10][G.psi], 70, B.n * 0.5); sfx('boss_shot'); }   // skids to a stop and the scrolls fly out
+      B.state = 'walk'; B.cd = ph === 3 ? rand(0.5, 0.8) : ph === 2 && !cheat('baby') ? rand(0.7, 1.0) : rand(0.8, 1.1); if (!moved) { G.shake = 0.2; G.fx.push({ k: 'slam', x: B.x, y: B.y - 4, t: 0.25 }); }
+      if (ph === 2 && !cheat('baby')) { scrollRing(B, [6, 8, 10][G.psi], 70, B.n * 0.5); sfx('boss_shot'); }   // skids to a stop and the scrolls fly out
     }
     return;
   }
@@ -2890,14 +2892,17 @@ function updateBoss(dt) {
     return;
   }
   if (B.state === 'air') {
-    // the shadow hunts you, then locks in place for the last half second
-    if (B.t > 0.5) { const tgt = safeLanding(P.x, P.y); const ddx = tgt.x - B.x, ddy = tgt.y - B.y, dd = Math.hypot(ddx, ddy) || 1, st = Math.min(dd, 110 * dt); B.x += ddx / dd * st; B.y += ddy / dd * st; }
-    if (B.t <= 0) { B.state = 'fall'; B.t = 0.32; const s2 = safeLanding(B.x, B.y); B.x = s2.x; B.y = s2.y; }
+    // the shadow hunts you the whole time he's up there, and keeps coming as he drops
+    // (Baby Mode keeps the old, gentler jump: it stops following for the last half second)
+    if (!cheat('baby') || B.t > 0.5) bossTrack(B, dt, cheat('baby') ? 110 : 0);
+    if (B.t <= 0) { B.state = 'fall'; B.t = 0.32; }
     return;
   }
   if (B.state === 'fall') {
     B.alt = 240 * (B.t / 0.32) ** 1.5;
+    if (!cheat('baby')) bossTrack(B, dt, 55);   // still drifting toward you as he drops, but slowly: a Siam now gets you clear
     if (B.t <= 0) {
+      { const s2 = safeLanding(B.x, B.y); B.x = s2.x; B.y = s2.y; }
       B.alt = 0; G.shake = 0.5; sfx('boss');
       G.fx.push({ k: 'slam', x: B.x, y: B.y - 4, t: 0.35 });
       for (let i = 0; i < 16; i++) G.fx.push({ k: 'smoke', x: B.x + rand(-10, 10), y: B.y - 4, t: 0.7, vx: rand(-80, 80), vy: rand(-40, 0), r: rand(3, 5) });
@@ -3013,7 +3018,7 @@ function drawBossShadow() {
   const B = G.boss;
   {
     const h = clamp(B.alt / 240, 0, 1), r = 8 + (1 - h) * 14;
-    const locked = B.state === 'fall' || (B.state === 'air' && B.t <= 0.5);
+    const locked = B.state === 'fall' || (B.state === 'air' && B.t <= (cheat('baby') ? 0.5 : 0.3));   // the red-and-gold ring: he's about to land
     shadowAt(B.x, B.y - 1, r, r * 0.4, 0.45 + (1 - h) * 0.35);
     if (!locked) { ctx.strokeStyle = 'rgba(20,18,16,0.5)'; ctx.beginPath(); ctx.ellipse(B.x, B.y - 1, r + 4 + Math.sin(G.t * 10), (r + 4) * 0.4, 0, 0, 7); ctx.stroke(); }
     if (locked) { ctx.strokeStyle = ((G.t * 16) | 0) % 2 ? '#ff4a2e' : '#ffd45a'; ctx.beginPath(); ctx.ellipse(B.x, B.y - 1, 26, 10, 0, 0, 7); ctx.stroke(); }
