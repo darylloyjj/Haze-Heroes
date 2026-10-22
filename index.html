@@ -4753,7 +4753,8 @@ function composeLook(L, o = {}) {
 }
 // the name of the image to draw for Jun Jie right now (registered in IMG/FLASH on first use)
 function lookName(o) {
-  const L = look(), key = 'lk|' + lookVer + '|' + (o.masked ? 1 : 0) + (o.bald ? 1 : 0) + (o.frame || 0) + (o.n95 ? 1 : 0);
+  // keyed by what he's actually wearing, so a NEW GAME (which wipes the save) can never show last game's look
+  const L = look(), key = 'lk|' + JSON.stringify(L) + '|' + (o.masked ? 1 : 0) + (o.bald ? 1 : 0) + (o.frame || 0) + (o.n95 ? 1 : 0);
   if (!IMG[key]) { IMG[key] = composeLook(L, o); FLASH[key] = whiteOf(IMG[key]); }
   return key;
 }
