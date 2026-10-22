@@ -1,6 +1,6 @@
 # Haze-Heroes
 
-A 2D pixel-art roguelike set in Singapore during the haze, made for a weekend game jam.
+A 2D pixel-art roguelike set in Singapore during the haze.
 
 The haze has come alive. Play as Jun Jie, wake up in hospital, grab a mask and a weapon, and fight your way through Singapore to find your family.
 
