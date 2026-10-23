@@ -1321,6 +1321,7 @@ function speedMul() { let m = 1; if (P.boons.skates) m *= 1 + 0.1 * lv('skates')
 function dmgMul() { let m = 1; if (P.boons.overclock) m *= 1 + 0.25 * lv('overclock'); m *= 1 + 0.05 * rank('grip'); if (baldActive()) m *= 1.2; return m; }
 
 function toHub(wake) {
+  G.banner = null;
   G.scene = 'hub'; G.map = MAPS.hub; G.enemies = []; G.shots = []; G.fx = []; G.pickups = []; G.flags = []; G.boss = null;
   P.x = 166; P.y = 100; P.boons = {}; P.inv = 0; P.dashT = 0; G.bubble = null;
   if (!wake && save.wins > 0 && !save.psiSeen) {
@@ -2169,7 +2170,7 @@ function enterGate() {
   G.tut = null;
   if (!save.tutDone) tutStart();   // first run: the power-up only appears once the drill is done
   else G.pickups.push({ k: 'reward', r: 'boon', x: rx, y: ry, t: 0, pat: pickPatron() });
-  G.banner = { t: 2.2, s: G.map.name };
+  G.banner = null; G.banner = { t: 2.2, s: G.map.name };
   updateCam(0, true);
   say(P.masked ? 'hero' : 'hero_nm', 'JUN JIE', junJieLine(), G.tut ? () => say('nurse', 'NURSE MEI', "OI BOY, CAN HEAR ME? BEFORE YOU RUN OFF, I SET UP SOME CARDBOARD HAZED FOR YOU TO PRACTISE ON. DON'T LAUGH, THEY TOOK ME VERY LONG.") : null);
 }
@@ -2190,6 +2191,7 @@ function junJieLine() {
   const l = pick(pool); save.lastJJ = l; persist(); return l;
 }
 function nextRoom() {
+  G.banner = null;   // banners from the last place don't follow him through the door
   if (G.map && G.map.props && boxes().some(b => !b.dummy)) RS.boxMiss = true;
   sfx('door_open'); G.gate = false; G.tut = null;
   for (const p of G.pickups || []) {
@@ -2474,6 +2476,13 @@ function updateEnemies(dt) {
       e.cd -= dt;
       if (e.atk === 'wind') {
         e.at -= dt;
+        if (e.at <= 0) {   // jump at where he's standing, but only a short way
+          const lx = P.x - e.x, ly = P.y - e.y, ll = Math.hypot(lx, ly) || 1, reach = Math.min(cheat('baby') ? 10 : 26, Math.max(0, ll - 10));
+          e.atk = 'leap'; e.at = 0.2; e.leap = { x: lx / ll * reach / 0.2, y: ly / ll * reach / 0.2 }; sfx('dash');
+        }
+      } else if (e.atk === 'leap') {
+        e.at -= dt; const nx = e.x + e.leap.x * dt, ny = e.y + e.leap.y * dt;
+        if (canStand(G.map, nx, e.y)) e.x = nx; if (canStand(G.map, e.x, ny)) e.y = ny;
         if (e.at <= 0) {
           e.atk = 'rec'; e.at = 0.6; G.shake = Math.max(G.shake, 0.15); sfx('brute_slam');
           G.fx.push({ k: 'slam', x: e.x, y: e.y - 2, t: 0.3 });
@@ -2482,12 +2491,12 @@ function updateEnemies(dt) {
           for (const b of boxes()) if (Math.hypot(b.x - e.x, b.y - e.y) < 30) breakBox(b);
         }
       } else if (e.atk === 'rec') { e.at -= dt; if (e.at <= 0) e.atk = ''; }
-      else { tx = dx / d; ty = dy / d; if (d < 32 && e.cd <= 0) { e.atk = 'wind'; e.at = G.psi === 2 ? 0.45 : 0.6; e.cd = rand(1.4, 2.0); } }
+      else { tx = dx / d; ty = dy / d; if (d < 50 && e.cd <= 0) { e.atk = 'wind'; e.at = G.psi === 2 ? 0.45 : 0.6; e.cd = rand(1.4, 2.0); } }
     } else {
       // wisps hover about, then shiver and lunge at you
       e.wob += dt * 4; e.cd -= dt;
-      if (e.atk === 'tele') { e.at -= dt; if (e.at <= 0) { e.atk = 'lunge'; e.at = 0.28; e.ld = { x: dx / d, y: dy / d }; sfx('wisp_lunge'); } }
-      else if (e.atk === 'lunge') { e.at -= dt; tx = e.ld.x * 3; ty = e.ld.y * 3; if (e.at <= 0) { e.atk = ''; e.cd = rand(2.2, 3.4); } }
+      if (e.atk === 'tele') { e.at -= dt; if (e.at <= 0) { e.atk = 'lunge'; e.at = 0.34; e.ld = { x: dx / d, y: dy / d }; sfx('wisp_lunge'); } }
+      else if (e.atk === 'lunge') { e.at -= dt; tx = e.ld.x * 2.2; ty = e.ld.y * 2.2; if (e.at <= 0) { e.atk = ''; e.cd = rand(2.2, 3.4); } }
       else {
         tx = dx / d + Math.cos(e.wob) * 0.4; ty = dy / d + Math.sin(e.wob) * 0.4;
         if (d < 60 && d > 16 && e.cd <= 0) { e.atk = 'tele'; e.at = 0.4; }
@@ -2921,13 +2930,13 @@ function damageBoss(n, quiet) {
     G.banner = { t: 2.2, s: 'RAFFLES IS ENRAGED!' };
     for (const e of G.enemies) if (e.state === 'alive') { e.state = 'puff'; e.t = 2; }
   }
-  if (B.hp <= 0) { B.hp = 0; B.state = 'dead'; B.t = 2.2; sfx('boss_dead'); G.flags = []; G.waves = []; for (const e of G.enemies) e.state = 'puff', e.t = 99; }
+  if (B.hp <= 0) { B.hp = 0; B.state = 'dead'; B.t = 2.2; sfx('boss_dead'); G.flags = []; G.waves = []; G.shots = G.shots.filter(s => !s.enemy); for (const e of G.enemies) e.state = 'puff', e.t = 99; }
 }
 // phase 2 flags: 3 to start. Each one broken makes him plant a replacement after a delay, but only this many times in total,
 // so you break between 3 (if you're quick) and 3 + this many. Clear the field and he's stunned.
 const FLAG_RESPAWNS = () => cheat('baby') ? 2 : [3, 6, 9][G.psi];   // so at most 6 / 9 / 12 flags to break
 const FLAG_DELAY = () => cheat('baby') ? 5 : [3, 2.5, 2][G.psi];
-const STUN_TIME = () => cheat('baby') ? 3.5 : [3, 2.5, 2][G.psi];
+const STUN_TIME = () => cheat('baby') ? 3 : [2.5, 2, 1.5][G.psi];
 function plantFlag(firstCd) {
   let x, y, tries = 0;
   do { x = rand(70, 250); y = rand(80, 160); tries++; } while ((Math.hypot(x - P.x, y - P.y) < 50 || Math.hypot(x - 160, y - 108) < 30) && tries < 30);
@@ -3024,7 +3033,7 @@ function updateBoss(dt) {
   if (B.state === 'dead') {
     B.t -= dt;
     if (Math.random() < 0.6) G.fx.push({ k: 'smoke', x: B.x + rand(-14, 14), y: B.y - rand(0, 44), t: 0.8, vx: rand(-30, 30), vy: rand(-40, -5), r: rand(2, 5) });
-    if (B.t <= 0) win();
+    if (B.t <= 0) { win(); if (G.coreWait && !G.dialog) updateCoreWait(dt); }
     return;
   }
   // replacement flags: each broken flag's timer runs down, then he plants a new one (only while others still stand)
@@ -3086,7 +3095,7 @@ function updateBoss(dt) {
     return;
   }
   if (B.state === 'charge') {
-    const sp = cheat('baby') ? (ph === 3 ? 280 : 230) * 0.6 : (ph === 3 ? 320 : ph === 2 ? 280 : 230);
+    const sp = cheat('baby') ? (ph === 3 ? 280 : 230) * 0.6 : (ph === 3 ? 290 : ph === 2 ? 250 : 200);
     const moved = bossMove(B, B.x + B.dir.x * 50, B.y + B.dir.y * 50, sp, dt);
     if (Math.random() < 0.8) G.fx.push({ k: 'dust', x: B.x + rand(-8, 8), y: B.y - 2, t: 0.4, vx: -B.dir.x * 30, vy: rand(-10, 0), r: 3 });
     if (!B.hitP && Math.hypot(P.x - B.x, P.y - B.y) < 16) { B.hitP = true; hurtPlayer(L.raff); }
@@ -3785,25 +3794,42 @@ function win() {
   if (G.winTalk) return; G.winTalk = true;
   const first = save.wins === 0;
   save.wins++; const wa = 20 + 10 * G.psi; save.cleanAir += wa; G.stats.air += wa;
-  // Hazed Cores: the first one is certain, after that it's 25% / 40% / 60% by PSI. It drops where Raffles fell.
+  // Hazed Cores: the first one is certain, after that it's 25% / 40% / 60% by PSI. It drops beside where Raffles fell.
   const firstCore = !save.coreEver;
   G.coreGot = !save.coreEver || Math.random() < [0.25, 0.4, 0.6][G.psi];
-  const B = G.boss, drop = G.coreGot ? { k: 'coredrop', x: B ? B.x + 24 : P.x + 20, y: B ? B.y : P.y, t: 999 } : null;
+  const B = G.boss, at = safeLanding(B ? B.x + 24 : P.x + 20, B ? B.y : P.y);
+  const drop = G.coreGot ? { k: 'coredrop', x: at.x, y: at.y, t: 999 } : null;
   if (G.coreGot) { save.cores = (save.cores || 0) + 1; save.coreTotal = (save.coreTotal || 0) + 1; save.coreEver = true; G.fx.push(drop); sfx('reward_appear'); }
-  if (!first) G.hazeIn = G.t;   // the haze starts rolling back in straight away
   persist();
   qRunEnd(true);
-  let seq;
-  seq = [];
-  if (first) seq.push(['J', "He's... stopped moving."]);
-  // the core he picks up from where Raffles fell
-  if (firstCore) seq.push(['J', 'Huh? Something fell out of him when he went down.'], ['J', "It's warm... like a lump of haze squeezed into a stone."], ['J', 'I should take this back to the hospital. Maybe the doctors know what it is.']);
-  else if (G.coreGot) seq.push(['J', save.rotanOpen ? 'Another core. The doctors will want this one too.' : save.cores >= 3 ? "Another core. That's three. Time to make Mei keep her promise." : 'Another core. These must be coming from inside the Hazed.']);
-  if (!first) {
-    if (G.psi === 2 && !save.win248Said) { save.win248Said = true; persist(); seq.push(['J', 'Even at its worst, he still fell... and the haze still comes back.'], ['J', "Raffles was never the source of this haze. The real source is still out there somewhere."]); }
-    const l = pick(HAZE_BACK.filter(x => x !== save.lastWinLine)); save.lastWinLine = l; persist(); seq.push(['J', l]);
+  // what he says before picking up the core, and after (or all of it straight away if nothing dropped)
+  const pre = [], post = [];
+  if (first) pre.push(['J', "He's... stopped moving."]);
+  if (!first && G.psi === 2 && !save.win248Said) { save.win248Said = true; persist(); pre.push(['J', 'Even at its worst, he still fell... and the haze still comes back.'], ['J', "Raffles was never the source of this haze. The real source is still out there somewhere."]); }
+  if (firstCore) { pre.push(['J', 'Huh? Something fell out of him when he went down.']); post.push(['J', "It's warm... like a lump of haze squeezed into a stone."], ['J', 'I should take this back to the hospital. Maybe the doctors know what it is.']); }
+  else if (G.coreGot) post.push(['J', save.rotanOpen ? 'Another core. The doctors will want this one too.' : save.cores >= 3 ? "Another core. That's three. Time to make Mei keep her promise." : 'Another core. These must be coming from inside the Hazed.']);
+  if (!first) { const l = pick(HAZE_BACK.filter(x => x !== save.lastWinLine)); save.lastWinLine = l; persist(); post.push(['J', l]); }
+  G.winPost = post;
+  if (drop) talk(pre, () => { G.coreWait = { drop, got: false, t: 0 }; });
+  else { if (!first) G.hazeIn = G.t; talk(pre.concat(post), winDone); }
+}
+function winDone() { G.winTalk = false; G.coreWait = null; G.scene = 'won'; G.deadT = 0; }
+function updateCoreWait(dt) {
+  // after Raffles falls he's free to walk over and pick the core up; then the haze rolls in and he heads back
+  const C = G.coreWait;
+  if (!C.got) {
+    if (Math.hypot(P.x - C.drop.x, P.y - C.drop.y) < 12) {
+      C.got = true; C.t = 0; G.fx = G.fx.filter(f => f !== C.drop); sfx('powerup');
+      G.fx.push({ k: 'coreget', x: C.drop.x, y: C.drop.y, t: 1.3, T: 1.3 });
+    }
+    return;
   }
-  talk(seq, () => { G.winTalk = false; G.scene = 'won'; G.deadT = 0; if (drop) { G.fx = G.fx.filter(f => f !== drop); sparkle(P.x, P.y - 12, '#ff9a3c'); } });
+  C.t += dt;
+  if (C.t >= 1.3) {
+    G.coreWait = null; sparkle(P.x, P.y - 36, '#ff9a3c'); G.fx.push({ k: 'pop', x: P.x, y: P.y - 46, t: 1.2, s: 'HAZED CORE!', c: '#ff9a3c' });
+    if (save.wins > 1) G.hazeIn = G.t;
+    talk(G.winPost || [], winDone);
+  }
 }
 
 /* ---------------- drawing the run ---------------- */
@@ -3919,6 +3945,7 @@ function drawEnemy(e) {
       const k = 1 - e.at / 0.6; bob = -2 - Math.round(k * 2); tell = ((G.t * 14) | 0) % 2 === 0;
       ctx.strokeStyle = `rgba(216,50,42,${0.5 + 0.4 * Math.sin(G.t * 30)})`; ctx.beginPath(); ctx.ellipse(e.x, e.y - 1, 30 * Math.min(1, k + 0.3), 23 * Math.min(1, k + 0.3) / 1.3 * 0.5, 0, 0, 7); ctx.stroke();
     }
+    if (e.atk === 'leap') bob = -Math.round(Math.sin((1 - e.at / 0.2) * Math.PI) * 8);
     if (e.atk === 'rec') bob = 1;
     if (e.atk === 'tele') { sx = ((G.t * 40) | 0) % 2 ? 1 : -1; tell = ((G.t * 16) | 0) % 2 === 0; }
     if (e.atk === 'lunge') { G.fx.push({ k: 'smoke', x: e.x, y: e.y - 8, t: 0.25, vx: 0, vy: 0, r: 2 }); }
@@ -3938,7 +3965,16 @@ function drawEnemy(e) {
 function drawFx() {
   for (const f of G.fx) {
     if (f.k === 'orbpop') { if (f.t > 0) drawOrbPop(f); continue; }
-    if (f.k === 'coredrop') { const b = Math.round(Math.sin(G.t * 3) * 1.5); ctx.fillStyle = `rgba(255,154,60,${0.25 + 0.1 * Math.sin(G.t * 5)})`; ctx.beginPath(); ctx.arc(f.x, f.y - 23 + b, 9, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(40,34,28,0.3)'; ctx.beginPath(); ctx.ellipse(f.x, f.y, 5, 1.5, 0, 0, 7); ctx.fill(); ctx.save(); ctx.translate(Math.round(f.x) - 7, Math.round(f.y) - 30 + b); ctx.scale(2, 2); coreIcon(0, 0); ctx.restore(); continue; }
+    if (f.k === 'coreget') {
+      // it lifts off the ground, flies up over his head and hangs there glowing, then he pockets it
+      const k = 1 - f.t / f.T, fl = clamp(k / 0.35, 0, 1), hx = P.x, hy = P.y - 34 + Math.round(Math.sin(G.t * 6));
+      const x = f.x + (hx - f.x) * fl, y = f.y - 16 + (hy - f.y + 16) * fl - Math.sin(fl * Math.PI) * 14;
+      if (fl >= 1) { ctx.strokeStyle = `rgba(255,154,60,${0.8 * (1 - k)})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, 6 + (k - 0.35) * 30, 0, 7); ctx.stroke(); }
+      ctx.fillStyle = `rgba(255,154,60,${0.3 + 0.15 * Math.sin(G.t * 12)})`; ctx.beginPath(); ctx.arc(x, y, 10, 0, 7); ctx.fill();
+      ctx.save(); ctx.translate(Math.round(x) - 7, Math.round(y) - 7); ctx.scale(2, 2); coreIcon(0, 0); ctx.restore(); continue;
+    }
+    if (f.k === 'coredrop') { if (G.coreWait && !G.dialog && ((G.t * 3) | 0) % 2) { const ay = Math.round(f.y - 50 + Math.sin(G.t * 6) * 2); ctx.fillStyle = '#0b0a0a'; ctx.beginPath(); ctx.moveTo(f.x - 5, ay - 1); ctx.lineTo(f.x + 5, ay - 1); ctx.lineTo(f.x, ay + 6); ctx.fill(); ctx.fillStyle = '#ff9a3c'; ctx.beginPath(); ctx.moveTo(f.x - 3, ay); ctx.lineTo(f.x + 3, ay); ctx.lineTo(f.x, ay + 4); ctx.fill(); }
+      const b = Math.round(Math.sin(G.t * 3) * 1.5); ctx.fillStyle = `rgba(255,154,60,${0.25 + 0.1 * Math.sin(G.t * 5)})`; ctx.beginPath(); ctx.arc(f.x, f.y - 23 + b, 9, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(40,34,28,0.3)'; ctx.beginPath(); ctx.ellipse(f.x, f.y, 5, 1.5, 0, 0, 7); ctx.fill(); ctx.save(); ctx.translate(Math.round(f.x) - 7, Math.round(f.y) - 30 + b); ctx.scale(2, 2); coreIcon(0, 0); ctx.restore(); continue; }
     const a = Math.max(0, f.t);
     if (f.k === 'swipe') {
       const k = 1 - f.t / 0.16, sw = 1.05 * (f.w || 1), a0 = f.a - sw, a1 = f.a - sw + 2 * sw * Math.min(1, k * 1.3), Rr = f.R || 1;
@@ -4050,7 +4086,7 @@ function drawHUD() {
   if (P.boons.triple) text('X3', W - 36, H - 22, '#5fd3f5');
   if (G.weapon === 'vac' && P.charge >= 3 && !P.beam && ((G.t * 4) | 0) % 2) text('BEAM!', W - 46, H - 34, '#bdefff');
   { const rdy = P.dashCd <= 0; text('SIAM', W - 64, H - 12, rdy ? '#efe6d6' : '#6d6862'); ctx.fillStyle = '#2a2420'; ctx.fillRect(W - 64, H - 5, 35, 2); ctx.fillStyle = rdy ? '#9cc24a' : '#e8a25c'; ctx.fillRect(W - 64, H - 5, 35 * (1 - clamp(P.dashCd / dashCdBase(), 0, 1)), 2); }
-  if (G.boss && !['statue', 'cut'].includes(G.boss.state)) {
+  if (G.boss && !['statue', 'cut', 'dead'].includes(G.boss.state)) {
     const B = G.boss;
     textC('SIR STAMFORD RAFFLES' + (B.phase === 3 ? ' - ENRAGED' : B.flagPhase ? ' - IMMUNE' : ''), 160, H - 14, B.phase === 3 ? '#ff4a2e' : B.state === 'stone' ? '#d6d1c8' : '#efe6d6');
     ctx.fillStyle = '#1b1c20'; ctx.fillRect(70, H - 7, 180, 4);
@@ -4939,6 +4975,7 @@ function doorSpam() {   // Revolving Door: in and out ten times without stopping
   if (G.doorSpam >= 10) achGet('revolving_door');
 }
 function enterPharm() {
+  G.banner = null;
   doorSpam();
   G.scene = 'pharm'; G.map = MAPS.pharm; P.x = 58; P.y = 166; P.flip = false; P.face = { x: 0, y: -1 };
   if (!recordsWingOpen() && !MAPS.pharm.block.includes(ROPE_BLOCK)) MAPS.pharm.block.push(ROPE_BLOCK);
@@ -5283,7 +5320,7 @@ const ACH = [
   ['hawker_favourite', 'Hawker Favourite', 'Take every Hawker Auntie power-up.', 0, ['Hawker Hat']],
   ['siam_master', 'Siam Master', 'Hit 200 Hazed with Siam.', 0, ['Haze Grey']],
   ['full_stomach', 'Full Stomach', 'Eat 5 or more meals in one run.', 0, null],
-  ['fast_furious', 'Fast and Furious', 'Siam 200 times.', 0, null],
+  ['fast_furious', 'Fast and Furious', 'Siam 500 times.', 0, null],
   ['fashionista', 'Fashionista', 'Own every outfit.', 0, null],
   ['mask_collector', 'Mask Collector', 'Own every mask, face paint included.', 0, null],
   ['hat_trick', 'Hat Trick', 'Own every piece of headwear.', 0, null],
@@ -5380,7 +5417,7 @@ function checkOwnership() {
 function checkCounts() {
   const s = st();
   if (s.kills >= 500) achGet('clean_sweep'); if (s.kills >= 1000) achGet('decontaminated'); if (s.brutes >= 500) achGet('big_boy');
-  if (s.fires >= 50) achGet('fire_safety'); if (s.siamHits >= 200) achGet('siam_master'); if (s.siam >= 200) achGet('fast_furious');
+  if (s.fires >= 50) achGet('fire_safety'); if (s.siamHits >= 200) achGet('siam_master'); if (s.siam >= 500) achGet('fast_furious');
   if (s.beams >= 100) achGet('superman'); if (s.quay >= 50) achGet('samsui_spirit'); if (s.skips >= 10) achGet('kanchiong');
   if (['rice', 'curry', 'tapao', 'chilli', 'tehtarik', 'gravy', 'gassy'].every(k => s.auntie[k])) achGet('hawker_favourite');
 }
