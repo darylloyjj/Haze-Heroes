@@ -12,7 +12,7 @@ The haze has come alive. Play as Jun Jie, wake up in hospital, grab a mask and a
 | Move | WASD / arrow keys | Joystick |
 | Attack | J / left click | ATTACK |
 | Special | K / right click | SPECIAL |
-| Chao Keng (dash) | Space | CHAO KENG |
+| Chao Keng (dash) | Space | SIAM |
 | Interact | E / Enter | E |
 | Pause | P / Esc | PAUSE |
 
