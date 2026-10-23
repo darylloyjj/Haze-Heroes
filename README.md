@@ -4,7 +4,7 @@ A 2D pixel-art roguelike set in Singapore during the haze.
 
 The haze has come alive. Play as Jun Jie, wake up in hospital, grab a mask and a weapon, and fight your way through Singapore to find your family.
 
-**Play it here:** https://darylloyjj.github.io/haze-heroes/
+**Play it here:** [https://darylloyjj.github.io/haze-heroes/](https://darylloyjj.github.io/Haze-Heroes/)
 
 ## Controls
 | Action | Keyboard | Phone |
