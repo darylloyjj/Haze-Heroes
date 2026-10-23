@@ -1007,10 +1007,10 @@ const BOONS = {
   // Hawker Auntie: food and healing
   rice: { name: 'CHICKEN RICE', icon: 'i_rice', pat: 'auntie', rar: 'RARE', weight: 0.5, desc: 'HEAL ALL YOUR MASKS. SHIOK.', instant: true, hurt: true },
   curry: { name: 'CURRY PUFF', icon: 'i_curry', pat: 'auntie', rar: 'RARE', weight: 0.4, desc: '+1 MAX MASK FOR THIS RUN, FILLED STRAIGHT AWAY.', instant: true },
-  tapao: { name: 'TAPAO', icon: 'i_tapao', pat: 'auntie', rar: 'COMMON', max: 2, desc: 'EACH HAZED YOU DISPERSE HAS A 4% CHANCE TO HEAL HALF A MASK.', desc2: 'EACH HAZED HAS A 7% CHANCE TO HEAL HALF A MASK.' },
+  tapao: { name: 'TAPAO', icon: 'i_tapao', pat: 'auntie', rar: 'COMMON', max: 2, desc: 'EACH HAZED YOU DISPERSE HAS A 7% CHANCE TO HEAL HALF A MASK.', desc2: 'EACH HAZED HAS A 12% CHANCE TO HEAL HALF A MASK.' },
   chilli: { name: 'CHILLI PADI', icon: 'i_chilli', pat: 'auntie', rar: 'COMMON', max: 2, desc: 'YOUR HITS SET HAZED ON FIRE: 2 DAMAGE A SECOND FOR 3S.', desc2: '3 DAMAGE A SECOND. WHEN A BURNING HAZED FALLS, THE FIRE JUMPS TO ONE NEARBY HAZED.' },
   tehtarik: { name: 'TEH TARIK', icon: 'i_tehtarik', pat: 'auntie', rar: 'COMMON', max: 2, desc: 'WHEN YOU SIAM, A WAVE OF TEH TARIK SPLASHES OUT AND PUSHES HAZED AWAY.', desc2: 'THREE SPLASHES ALONG YOUR SIAM THAT ALSO DEAL 6 DAMAGE.' },
-  gravy: { name: 'EXTRA GRAVY', icon: 'i_gravy', pat: 'auntie', rar: 'RARE', max: 1, desc: 'DEFEATED HAZED HAVE A 15% CHANCE TO DROP A MEAL. UP TO 2 A ROOM.' },
+  gravy: { name: 'EXTRA GRAVY', icon: 'i_gravy', pat: 'auntie', rar: 'RARE', max: 1, desc: 'DEFEATED HAZED HAVE AN 8% CHANCE TO DROP A MEAL. UP TO 1 A ROOM.' },
   gassy: { name: 'GASSY', icon: 'i_gassy', pat: 'auntie', rar: 'COMMON', max: 2, desc: 'WHEN A HAZED HITS YOU, FART ON EVERYTHING NEARBY.', desc2: 'BIGGER FARTS THAT REACH FURTHER AND DEAL DOUBLE DAMAGE.' },
   // Sim Lim Uncle: gadgets
   bot: { name: 'PURIFIER BOT', icon: 'i_bot', pat: 'uncle', rar: 'RARE', max: 2, desc: 'A LITTLE ROBOT FOLLOWS YOU AND SHOOTS THE HAZED.', desc2: 'YOUR BOT SHOOTS TWICE AS FAST.' },
@@ -1203,8 +1203,8 @@ function breakBox(b, special, src) {
   // contents: usually 1-4 coins, sometimes empty, rarely a meal (heals 1 mask)
   const r = Math.random();
   let n = 0;
-  if (r < 0.10) { G.pickups.push({ k: 'meal', x: b.x, y: b.y, t: 0 }); G.fx.push({ k: 'pop', x: b.x, y: b.y - 20, t: 0.8, s: 'MEAL!', c: '#e8a25c' }); }
-  else if (r < 0.30) n = 3 + (Math.random() < 0.5 ? 1 : 0);
+  if (r < 0.04) { G.pickups.push({ k: 'meal', x: b.x, y: b.y, t: 0 }); G.fx.push({ k: 'pop', x: b.x, y: b.y - 20, t: 0.8, s: 'MEAL!', c: '#e8a25c' }); }
+  else if (r < 0.24) n = 3 + (Math.random() < 0.5 ? 1 : 0);
   else if (r < 0.65) n = 1 + (Math.random() < 0.5 ? 1 : 0);
   else G.fx.push({ k: 'pop', x: b.x, y: b.y - 18, t: 0.6, s: 'EMPTY', c: '#9aa0a9' });
   for (let i = 0; i < n; i++) G.pickups.push({ k: 'coin', x: b.x + rand(-3, 3), y: b.y + rand(-2, 2), n: 1, t: 0, vx: rand(-60, 60), vy: rand(-40, 20) });
@@ -2413,11 +2413,11 @@ function spreadFire(e) {
 function disperse(e) {
   e.state = 'gone'; G.stats.kills++; sfx('disperse'); qOnKill(e);
   for (let i = 0; i < 10; i++) G.fx.push({ k: 'smoke', x: e.x, y: e.y - 6, t: 0.6, vx: rand(-40, 40), vy: rand(-40, 10), r: rand(2, 4) });
-  if (P.boons.tapao && P.half < P.max && Math.random() < [0, 0.04, 0.07][lv('tapao')]) {
+  if (P.boons.tapao && P.half < P.max && Math.random() < [0, 0.07, 0.12][lv('tapao')]) {
     P.half = Math.min(P.max, P.half + 1);
     G.fx.push({ k: 'pop', x: P.x, y: P.y - 34, t: 0.9, s: 'TAPAO! +1/2', c: '#9cc24a' }); G.fx.push({ k: 'boonget', icon: 'i_tapao', x: e.x, y: e.y - 14, t: 0.8 }); sfx('heal');
   }
-  if (P.boons.gravy && e.frac >= 1 && (G.mealDropped | 0) < 2 && G.room <= FIGHT_ROOMS && Math.random() < 0.15) {
+  if (P.boons.gravy && e.frac >= 1 && (G.mealDropped | 0) < 1 && G.room <= FIGHT_ROOMS && Math.random() < 0.08) {
     G.mealDropped = (G.mealDropped | 0) + 1; G.pickups.push({ k: 'meal', x: e.x, y: e.y, t: 0 });
     G.fx.push({ k: 'pop', x: e.x, y: e.y - 20, t: 0.8, s: 'MEAL!', c: '#e8a25c' });
   }
